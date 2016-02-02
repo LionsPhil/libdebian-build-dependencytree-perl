@@ -1,0 +1,104 @@
+#!/usr/bin/perl
+# dependency-tree-visualize - generate graphviz source to visualize a dependency tree
+# Copyright (c) 2016 Smoothwall Ltd.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+use warnings;
+use strict;
+
+use Dpkg::Control::Info;
+use Debian::Build::DependencyTree;
+use Try::Tiny;
+
+unless (@ARGV) {
+	die "Feed me the filenames of control files and I will output graphviz for them";
+}
+
+# Read and parse things
+
+my @controls = map { Dpkg::Control::Info->new($_) } @ARGV;
+
+my $substvars = Dpkg::Substvars->new();
+$substvars->set_as_used('misc:Depends', '');
+$substvars->set_as_used('shlibs:Depends', '');
+
+my $dt = Debian::Build::DependencyTree->new(
+	packages  => \@controls,
+	substvars => $substvars,
+);
+
+my @stages;
+
+try {
+	$dt->compute();
+	@stages = $dt->stages();
+} catch {
+	if($_->isa('Debian::Build::DependencyTree::Error::Loop')) {
+		warn "There was a loop!";
+		# TODO use ->loopers() to annotate the loops in the graphviz output
+	}
+};
+
+foreach my $warning ($dt->warnings()) {
+	warn $warning;
+}
+
+# Graphviz output
+
+sub sanitize_package_name {
+	my ($name) = @_;
+	$name =~ tr/-.+/__x/;
+	return $name;
+}
+
+my %source_packages  = $dt->source_packages();
+my %binary_to_source = $dt->binary_to_source();
+my %scores           = $dt->scores();
+
+print "digraph deps {\n";
+foreach my $package_name (keys %source_packages) {
+	my $package = $source_packages{$package_name};
+	my $node_name = sanitize_package_name($package_name);
+	my $score = $scores{$package_name};
+
+	# Declare the node
+	print "\t$node_name [label=\"$package_name ($score)\"]\n";
+
+	# Declare its build-dep edges
+	foreach my $dep_name ($package->builddeps()) {
+		next unless exists $source_packages{$dep_name}; # no unknowns
+		my $dep_node = sanitize_package_name($dep_name);
+		print "\t$node_name -> $dep_node\n";
+	}
+
+	# Declare its run-dep edges (union of all its binaries)
+	foreach my $dep_name ($package->rundeps()) {
+		$dep_name = $binary_to_source{$dep_name};
+		next unless defined $dep_name;
+		my $dep_node = sanitize_package_name($dep_name);
+		print "\t$node_name -> $dep_node [style=\"dotted\"]\n";
+	}
+}
+if(@stages) {
+	# Declare ranks for nodes if we got an ordering
+	foreach my $stage (@stages) {
+		my $dot_rank = join(' ', map { sanitize_package_name($_) } @$stage);
+		print "\t{ rank=same; $dot_rank }\n";
+	}
+}
+print "}\n";
+
+exit 0;
