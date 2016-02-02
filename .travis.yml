@@ -1,0 +1,16 @@
+language: perl
+perl:
+    - 5.20
+addons:
+    apt:
+        packages:
+            - libdpkg-perl
+# We need to customize the build script since the @INC Travis provides points
+# to its perlbrew paths, but the libdpkg-perl modules are in a system location.
+script: perl Build.PL && ./Build && PERL5LIB="${PERL5LIB}:/usr/share/perl5/" ./Build test
+# We have to use the Trusty Beta to get a new enough libdpkg-perl; the
+# container-based build environment has a Dpkg::Substvars that doesn't implement
+# set_as_used. In future we may be able to remove 'sudo' if they offer Trusty
+# containers.
+sudo: required
+dist: trusty
