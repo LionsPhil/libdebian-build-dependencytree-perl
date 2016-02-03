@@ -1,0 +1,10 @@
+bin/dependency-tree-visualize
+Build.PL
+lib/Debian/Build/DependencyTree.pm
+lib/Debian/Build/DependencyTree/Exception.pm
+lib/Debian/Build/DependencyTree/Package/Binary.pm
+lib/Debian/Build/DependencyTree/Package/Source.pm
+LICENSE
+MANIFEST			This list of files
+README.md
+t/dependencytree.t
