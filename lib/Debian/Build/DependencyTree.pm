@@ -363,13 +363,15 @@ sub loops {
 			# we depend on somewhere.
 			return unless defined $source;
 
+			# Record this step
+			push @steps, {source => $source, binary => $binary};
+
 			if($visited{$source}) {
 				# We've found a loop, currently in @steps!
 				push @loops, \@steps;
 			} else {
-				# Record this step
+				# Remember we've been here before
 				$visited{$source} = 1;
-				push @steps, {source => $source, binary => $binary};
 
 				# Try every build dependency of the source package
 				my $source_package = $self->{source_packages}->{$source};

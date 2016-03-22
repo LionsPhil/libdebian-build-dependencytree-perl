@@ -344,11 +344,13 @@ Description: Member of a trivial build dependency loop
 					{ source => 'd', binary => undef },
 					{ source => 'f', binary => 'f1' },
 					{ source => 'e', binary => 'e1' },
+					{ source => 'd', binary => 'd1' },
 				],
 				[
 					{ source => 'f', binary => undef },
 					{ source => 'e', binary => 'e1' },
 					{ source => 'd', binary => 'd1' },
+					{ source => 'f', binary => 'f1' },
 				],
 				# e -> d doesn't loop around to f, since e -> d is only a rundep
 			]) or diag explain \@loops;
