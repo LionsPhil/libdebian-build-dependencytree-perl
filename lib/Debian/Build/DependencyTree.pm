@@ -363,13 +363,26 @@ sub loops {
 			# we depend on somewhere.
 			return unless defined $source;
 
+			# Record this step
+			push @steps, {source => $source, binary => $binary};
+
 			if($visited{$source}) {
-				# We've found a loop, currently in @steps!
-				push @loops, \@steps;
+				# Was the previous step the same source?
+				# This can happen when e.g. a dev binary package depends on a
+				# normal library binary package, and isn't a loop since both
+				# will be provided by the same build of the source.
+				if($steps[$#steps - 1]->{source} eq $source) {
+					# It's not a loop (yet, anyway), but don't recurse, since
+					# we'll be considering the same source over and over again.
+					# Covering any other binaries is handled by the breadth of
+					# the recursion.
+				} else {
+					# We've found a loop, currently in @steps!
+					push @loops, \@steps;
+				}
 			} else {
-				# Record this step
+				# Remember we've been here before
 				$visited{$source} = 1;
-				push @steps, {source => $source, binary => $binary};
 
 				# Try every build dependency of the source package
 				my $source_package = $self->{source_packages}->{$source};
