@@ -45,6 +45,10 @@ describe 'DependencyTree' => sub {
 		# D <- - - E <----- F # Solid:    build dependency
 		#  `---------------7  #
 		#
+		# G <=============> H
+		#
+		# I <=============> J # with '-dev' packages
+		#
 		# Some things depend on debhelper for 'realism' (and to avoid an empty
 		# build-deps); otherwise not to cut down warning generation.
 
@@ -136,8 +140,40 @@ Architecture: all
 Depends:
 Description: Member of a trivial build dependency loop
 }		);
+		write_file("$tempdir/i", q{
+Source: i
+Section: main
+Priority: standard
+Build-Depends: j-dev
 
-		foreach my $package (qw(a b c d e f g h)) {
+Package: i-lib
+Architecture: all
+Depends:
+Description: Member of a build dependency loop via dev packages
+
+Package: i-dev
+Architecture: all
+Depends: i-lib
+Description: Member of a build dependency loop via dev packages
+}		);
+		write_file("$tempdir/j", q{
+Source: j
+Section: main
+Priority: standard
+Build-Depends: i-dev
+
+Package: j-lib
+Architecture: all
+Depends:
+Description: Member of a build dependency loop via dev packages
+
+Package: j-dev
+Architecture: all
+Depends: j-lib
+Description: Member of a build dependency loop via dev packages
+}		);
+
+		foreach my $package (qw(a b c d e f g h i j)) {
 			$control_infos{$package} = Dpkg::Control::Info->new("$tempdir/$package");
 		}
 	};
@@ -353,6 +389,33 @@ Description: Member of a trivial build dependency loop
 					{ source => 'f', binary => 'f1' },
 				],
 				# e -> d doesn't loop around to f, since e -> d is only a rundep
+			]) or diag explain \@loops;
+		};
+
+		it 'does not consider dev/lib dependencies to be loops' => sub {
+			my $dt = Debian::Build::DependencyTree->new(
+				packages  => [$control_infos{i}, $control_infos{j}],
+			);
+			trap { $dt->compute(); };
+			$check_warnings->([$dt->warnings()], []);
+			isa_ok($trap->die(), 'Debian::Build::DependencyTree::Error::Loop');
+			# Have we identified which packages have got caught up in this loop?
+			my @loops = $dt->loops();
+			cmp_deeply(\@loops, [
+				[
+					{ source => 'i', binary => undef },
+					{ source => 'j', binary => 'j-dev' },
+					# j-lib gets omitted
+					{ source => 'i', binary => 'i-dev' },
+				],
+				[
+					{ source => 'j', binary => undef },
+					{ source => 'i', binary => 'i-dev' },
+					# i-lib gets omitted
+					{ source => 'j', binary => 'j-dev' },
+				],
+				# No loop reported for i-dev in i source depending on i source
+				# No loop reported for j-dev in j source depending on j source
 			]) or diag explain \@loops;
 		};
 
